@@ -1,0 +1,56 @@
+# streamlit_app.py
+
+import streamlit as st
+import pandas as pd
+import ast
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+
+# Load Data
+@st.cache_data
+def load_data():
+    movies = pd.read_csv("tmdb_5000_movies.csv")
+    credits = pd.read_csv("tmdb_5000_credits.csv")
+    df = movies.merge(credits, left_on='id', right_on='movie_id')
+    return df
+
+df = load_data()
+
+# Preprocessing
+def clean_data(df):
+    df['genres'] = df['genres'].apply(lambda x: [i['name'].replace(" ", "") for i in ast.literal_eval(x)])
+    df['cast'] = df['cast'].apply(lambda x: [i['name'].replace(" ", "") for i in ast.literal_eval(x)[:3]])
+    df['crew'] = df['crew'].apply(ast.literal_eval)
+    df['director'] = df['crew'].apply(lambda x: [i['name'].replace(" ", "") for i in x if i['job'] == 'Director'])
+    df['tags'] = df['genres'] + df['cast'] + df['director']
+    df['tags'] = df['tags'].apply(lambda x: ' '.join(x))
+    return df
+
+df = clean_data(df)
+
+# Vectorization
+tfidf = TfidfVectorizer(stop_words='english')
+vector = tfidf.fit_transform(df['tags'])
+similarity = cosine_similarity(vector)
+
+# Movie index mapping
+movie_index = pd.Series(df.index, index=df['title']).drop_duplicates()
+
+# Recommendation Function
+def recommend(movie):
+    if movie not in movie_index:
+        return []
+    idx = movie_index[movie]
+    distances = similarity[idx]
+    top = sorted(list(enumerate(distances)), reverse=True, key=lambda x: x[1])[1:6]
+    return df[['title', 'vote_average', 'release_date']].iloc[[i[0] for i in top]]
+
+# Streamlit UI
+st.title("🎬 Movie Recommendation System")
+st.markdown("Get similar movie suggestions based on your favorite film!")
+
+movie_list = df['title'].sort_values().unique()
+selected_movie = st.selectbox("Choose a Movie", movie_list)
+
+if st.button("Recommend"):
+    with st
